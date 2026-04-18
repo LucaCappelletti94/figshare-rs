@@ -35,17 +35,26 @@ fn live_metadata(
     title: impl Into<String>,
     description: impl Into<String>,
     tag: impl Into<String>,
-    category_id: CategoryId,
 ) -> Result<ArticleMetadata, figshare_rs::ArticleMetadataBuildError> {
     ArticleMetadata::builder()
         .title(title)
         .defined_type(DefinedType::Dataset)
         .description(description)
         .author_named("figshare-rs CI")
-        .category_id(category_id)
         .tag("figshare-rs")
         .tag(tag)
         .build()
+}
+
+fn live_metadata_with_category(
+    title: impl Into<String>,
+    description: impl Into<String>,
+    tag: impl Into<String>,
+    category_id: CategoryId,
+) -> Result<ArticleMetadata, figshare_rs::ArticleMetadataBuildError> {
+    let mut metadata = live_metadata(title, description, tag)?;
+    metadata.categories.push(category_id);
+    Ok(metadata)
 }
 
 fn md5_hex(bytes: &[u8]) -> String {
@@ -149,13 +158,64 @@ async fn wait_for_own_search_hit(
 }
 
 async fn required_live_category_id(client: &FigshareClient) -> Result<CategoryId, Box<dyn Error>> {
-    client
-        .list_account_categories()
-        .await?
-        .into_iter()
-        .next()
-        .map(|category| category.id)
-        .ok_or_else(|| "Figshare returned no account-scoped categories".into())
+    let suffix = unique_suffix();
+    let probe_title = format!("figshare-rs category probe {suffix}");
+    let probe_article = client
+        .create_article(&live_metadata(
+            probe_title.clone(),
+            "Temporary category probe draft for figshare-rs live smoke tests",
+            format!("category-probe-{suffix}"),
+        )?)
+        .await?;
+    let probe_id = probe_article.id;
+
+    let result = async {
+        let candidates = client.list_account_categories().await?;
+        if candidates.is_empty() {
+            return Err::<CategoryId, Box<dyn Error>>(
+                "Figshare returned no account-scoped categories".into(),
+            );
+        }
+
+        for category in candidates {
+            let metadata = live_metadata_with_category(
+                probe_title.clone(),
+                "Temporary category probe draft for figshare-rs live smoke tests",
+                format!("category-probe-{suffix}"),
+                category.id,
+            )?;
+
+            match client.update_article(probe_id, &metadata).await {
+                Ok(_) => return Ok(category.id),
+                Err(FigshareError::Http {
+                    status,
+                    message,
+                    code,
+                    ..
+                }) if status == StatusCode::NOT_FOUND
+                    && code.as_deref() == Some("EntityNotFound")
+                    && message
+                        .as_deref()
+                        .is_some_and(|message| message.contains("Not allowed to set category")) => {
+                }
+                Err(error) => return Err(Box::new(error)),
+            }
+        }
+
+        Err("could not find an account category allowed for article metadata".into())
+    }
+    .await;
+
+    let cleanup = cleanup_article(client, probe_id).await;
+    match (result, cleanup) {
+        (Ok(category_id), Ok(())) => Ok(category_id),
+        (Err(error), Ok(())) => Err(error),
+        (Ok(_), Err(error)) => Err(error),
+        (Err(error), Err(cleanup_error)) => Err(format!(
+            "category probe failed: {error}; cleanup also failed: {cleanup_error}"
+        )
+        .into()),
+    }
 }
 
 #[tokio::test]
@@ -177,7 +237,6 @@ async fn authenticated_account_surface_round_trip() {
         initial_title.clone(),
         "Draft-to-public live smoke test for figshare-rs",
         format!("draft-run-{suffix}"),
-        category_id,
     )
     .expect("metadata");
 
@@ -192,7 +251,6 @@ async fn authenticated_account_surface_round_trip() {
                 format!("figshare-rs link smoke {}", suffix + 1),
                 "Dedicated linked-file live smoke test for figshare-rs",
                 format!("link-run-{}", suffix + 1),
-                category_id,
             )
             .expect("link metadata"),
         )
@@ -219,7 +277,7 @@ async fn authenticated_account_surface_round_trip() {
         assert_eq!(draft.title, initial_title, "draft title should round-trip");
 
         let updated_title = format!("figshare-rs updated draft smoke {suffix}");
-        let updated_metadata = live_metadata(
+        let updated_metadata = live_metadata_with_category(
             updated_title.clone(),
             "Updated live smoke test for figshare-rs",
             format!("draft-run-{suffix}"),
@@ -403,7 +461,6 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
                 format!("figshare-rs reconcile smoke {suffix}"),
                 "Direct reconcile_files live smoke test",
                 format!("workflow-direct-{suffix}"),
-                category_id,
             )?)
             .await?;
         cleanup_ids.push(direct_article.id);
@@ -429,7 +486,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
         let published_existing = client
             .publish_existing_article_with_policy(
                 direct_article.id,
-                &live_metadata(
+                &live_metadata_with_category(
                     format!("figshare-rs publish-existing smoke {suffix}"),
                     "publish_existing_article_with_policy live smoke test",
                     format!("workflow-update-{suffix}"),
@@ -458,7 +515,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
 
         let created = client
             .create_and_publish_article(
-                &live_metadata(
+                &live_metadata_with_category(
                     format!("figshare-rs create-publish smoke {}", suffix + 1),
                     "create_and_publish_article live smoke test",
                     format!("workflow-create-{}", suffix + 1),
