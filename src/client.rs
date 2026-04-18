@@ -421,9 +421,7 @@ impl FigshareClient {
     fn is_trusted_upload_url(&self, url: &Url) -> Result<bool, FigshareError> {
         let endpoint = self.endpoint.base_url()?;
         Ok(endpoint.origin() == url.origin()
-            || url
-                .host_str()
-                .is_some_and(|host| host.eq_ignore_ascii_case("uploads.figshare.com")))
+            || url.host_str().is_some_and(is_trusted_figshare_upload_host))
     }
 
     fn authorization_header_value(&self, operation: &'static str) -> Result<String, FigshareError> {
@@ -1173,6 +1171,14 @@ fn parse_location(base: &Url, location: &str) -> Result<Url, FigshareError> {
     }
 }
 
+fn is_trusted_figshare_upload_host(host: &str) -> bool {
+    let host = host.to_ascii_lowercase();
+    host == "uploads.figshare.com"
+        || host
+            .strip_suffix(".figshare.com")
+            .is_some_and(|subdomain| subdomain.starts_with("fup-"))
+}
+
 fn upload_part_url(upload_url: &Url, part_no: u64) -> Result<Url, FigshareError> {
     let mut url = upload_url.clone();
     let mut segments = url.path_segments_mut().map_err(|()| {
@@ -1513,6 +1519,25 @@ mod tests {
         );
         assert_eq!(
             upload_request.headers()[AUTHORIZATION].to_str().unwrap(),
+            "token token"
+        );
+
+        let regional_upload_request = client
+            .upload_request_url(
+                Method::PUT,
+                Url::parse("https://fup-eu-west-1.figshare.com/upload/token").unwrap(),
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(
+            regional_upload_request.url().host_str(),
+            Some("fup-eu-west-1.figshare.com")
+        );
+        assert_eq!(
+            regional_upload_request.headers()[AUTHORIZATION]
+                .to_str()
+                .unwrap(),
             "token token"
         );
 
