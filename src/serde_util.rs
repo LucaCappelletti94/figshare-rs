@@ -2,6 +2,9 @@ use std::fmt;
 
 use serde::de::{IntoDeserializer, Visitor};
 use serde::Deserializer;
+use url::Url;
+
+use crate::ids::Doi;
 
 /// Deserializes an integer field while tolerating integer-like float and
 /// numeric string wire shapes from Figshare.
@@ -243,14 +246,141 @@ where
     deserializer.deserialize_option(OptionalBoolishVisitor)
 }
 
+/// Deserializes an optional URL field while tolerating empty strings that
+/// Figshare sometimes emits for absent links.
+pub(crate) fn deserialize_option_urlish<'de, D>(deserializer: D) -> Result<Option<Url>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct OptionalUrlishVisitor;
+
+    impl<'de> Visitor<'de> for OptionalUrlishVisitor {
+        type Value = Option<Url>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("an optional URL or empty string")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            struct UrlishVisitor;
+
+            impl Visitor<'_> for UrlishVisitor {
+                type Value = Option<Url>;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    formatter.write_str("a URL string or empty string")
+                }
+
+                fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    let value = value.trim();
+                    if value.is_empty() {
+                        return Ok(None);
+                    }
+                    Url::parse(value).map(Some).map_err(E::custom)
+                }
+
+                fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    self.visit_str(&value)
+                }
+            }
+
+            deserializer.deserialize_any(UrlishVisitor)
+        }
+    }
+
+    deserializer.deserialize_option(OptionalUrlishVisitor)
+}
+
+/// Deserializes an optional DOI field while tolerating empty strings that
+/// Figshare sometimes emits for absent identifiers.
+pub(crate) fn deserialize_option_doiish<'de, D>(deserializer: D) -> Result<Option<Doi>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct OptionalDoiishVisitor;
+
+    impl<'de> Visitor<'de> for OptionalDoiishVisitor {
+        type Value = Option<Doi>;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("an optional DOI or empty string")
+        }
+
+        fn visit_none<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_unit<E>(self) -> Result<Self::Value, E> {
+            Ok(None)
+        }
+
+        fn visit_some<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+        where
+            D: Deserializer<'de>,
+        {
+            struct DoiishVisitor;
+
+            impl Visitor<'_> for DoiishVisitor {
+                type Value = Option<Doi>;
+
+                fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    formatter.write_str("a DOI string or empty string")
+                }
+
+                fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    let value = value.trim();
+                    if value.is_empty() {
+                        return Ok(None);
+                    }
+                    Doi::new(value).map(Some).map_err(E::custom)
+                }
+
+                fn visit_string<E>(self, value: String) -> Result<Self::Value, E>
+                where
+                    E: serde::de::Error,
+                {
+                    self.visit_str(&value)
+                }
+            }
+
+            deserializer.deserialize_any(DoiishVisitor)
+        }
+    }
+
+    deserializer.deserialize_option(OptionalDoiishVisitor)
+}
+
 #[cfg(test)]
 mod tests {
     use serde::Deserialize;
+    use url::Url;
 
     use super::{
-        deserialize_boolish, deserialize_option_boolish, deserialize_option_u64ish,
-        deserialize_stringish, deserialize_u64ish,
+        deserialize_boolish, deserialize_option_boolish, deserialize_option_doiish,
+        deserialize_option_u64ish, deserialize_option_urlish, deserialize_stringish,
+        deserialize_u64ish,
     };
+    use crate::ids::Doi;
 
     #[derive(Debug, Deserialize, PartialEq, Eq)]
     struct U64Holder {
@@ -280,6 +410,18 @@ mod tests {
     struct OptionalBoolHolder {
         #[serde(default, deserialize_with = "deserialize_option_boolish")]
         value: Option<bool>,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    struct OptionalUrlHolder {
+        #[serde(default, deserialize_with = "deserialize_option_urlish")]
+        value: Option<Url>,
+    }
+
+    #[derive(Debug, Deserialize, PartialEq, Eq)]
+    struct OptionalDoiHolder {
+        #[serde(default, deserialize_with = "deserialize_option_doiish")]
+        value: Option<Doi>,
     }
 
     #[test]
@@ -412,5 +554,59 @@ mod tests {
             serde_json::from_value::<OptionalBoolHolder>(serde_json::json!({ "value": 2 }))
                 .is_err()
         );
+    }
+
+    #[test]
+    fn optional_urlish_handles_empty_null_and_real_urls() {
+        assert_eq!(
+            serde_json::from_value::<OptionalUrlHolder>(serde_json::json!({ "value": "" }))
+                .unwrap(),
+            OptionalUrlHolder { value: None }
+        );
+        assert_eq!(
+            serde_json::from_value::<OptionalUrlHolder>(serde_json::json!({ "value": null }))
+                .unwrap(),
+            OptionalUrlHolder { value: None }
+        );
+        assert_eq!(
+            serde_json::from_value::<OptionalUrlHolder>(
+                serde_json::json!({ "value": "https://figshare.com/articles/1" })
+            )
+            .unwrap(),
+            OptionalUrlHolder {
+                value: Some(Url::parse("https://figshare.com/articles/1").unwrap())
+            }
+        );
+        assert!(serde_json::from_value::<OptionalUrlHolder>(
+            serde_json::json!({ "value": "not a url" })
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn optional_doiish_handles_empty_null_and_real_dois() {
+        assert_eq!(
+            serde_json::from_value::<OptionalDoiHolder>(serde_json::json!({ "value": "" }))
+                .unwrap(),
+            OptionalDoiHolder { value: None }
+        );
+        assert_eq!(
+            serde_json::from_value::<OptionalDoiHolder>(serde_json::json!({ "value": null }))
+                .unwrap(),
+            OptionalDoiHolder { value: None }
+        );
+        assert_eq!(
+            serde_json::from_value::<OptionalDoiHolder>(
+                serde_json::json!({ "value": "10.6084/m9.figshare.123" })
+            )
+            .unwrap(),
+            OptionalDoiHolder {
+                value: Some(Doi::new("10.6084/m9.figshare.123").unwrap())
+            }
+        );
+        assert!(serde_json::from_value::<OptionalDoiHolder>(
+            serde_json::json!({ "value": "not a doi" })
+        )
+        .is_err());
     }
 }

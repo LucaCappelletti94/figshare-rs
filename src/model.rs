@@ -9,7 +9,8 @@ use url::Url;
 use crate::ids::{ArticleId, CategoryId, Doi, FileId, LicenseId};
 use crate::metadata::DefinedType;
 use crate::serde_util::{
-    deserialize_boolish, deserialize_option_boolish, deserialize_option_u64ish, deserialize_u64ish,
+    deserialize_boolish, deserialize_option_boolish, deserialize_option_doiish,
+    deserialize_option_u64ish, deserialize_option_urlish, deserialize_u64ish,
 };
 
 macro_rules! string_enum {
@@ -133,7 +134,11 @@ pub struct ArticleLicense {
     /// License short name.
     pub name: String,
     /// License documentation URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub url: Option<Url>,
     /// Additional untyped fields preserved for forward compatibility.
     #[serde(flatten, default)]
@@ -212,7 +217,11 @@ pub struct ArticleFile {
     )]
     pub is_link_only: Option<bool>,
     /// Public or private file download URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub download_url: Option<Url>,
     /// Private file status, when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -224,7 +233,11 @@ pub struct ArticleFile {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preview_state: Option<String>,
     /// Upload session URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub upload_url: Option<Url>,
     /// Upload token, when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -269,7 +282,11 @@ pub struct Article {
     /// Article title.
     pub title: String,
     /// Version-specific DOI, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_doiish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub doi: Option<Doi>,
     /// Group identifier, when present.
     #[serde(
@@ -279,22 +296,46 @@ pub struct Article {
     )]
     pub group_id: Option<u64>,
     /// Figshare-provided article URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub url: Option<Url>,
     /// Public HTML URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub url_public_html: Option<Url>,
     /// Public API URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub url_public_api: Option<Url>,
     /// Private HTML URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub url_private_html: Option<Url>,
     /// Private API URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub url_private_api: Option<Url>,
     /// Public Figshare landing page, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub figshare_url: Option<Url>,
     /// Publication timestamp as returned by Figshare, when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -306,7 +347,11 @@ pub struct Article {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_date: Option<String>,
     /// Preview thumbnail URL, when present.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_option_urlish",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub thumb: Option<Url>,
     /// Typed article kind, when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -605,6 +650,53 @@ mod tests {
         assert_eq!(article.version_number(), Some(3));
         assert!(article.file_by_name("artifact.bin").is_some());
         assert!(article.file_by_id(crate::FileId(8)).is_some());
+    }
+
+    #[test]
+    fn article_and_related_models_tolerate_empty_optional_doi_and_urls() {
+        let article: Article = serde_json::from_value(json!({
+            "id": 11,
+            "title": "Example",
+            "doi": "",
+            "url": "",
+            "url_public_html": "",
+            "url_public_api": "",
+            "url_private_html": "",
+            "url_private_api": "",
+            "figshare_url": "",
+            "thumb": "",
+            "license": {
+                "value": 1,
+                "name": "CC BY",
+                "url": ""
+            },
+            "files": [{
+                "id": 9,
+                "name": "artifact.bin",
+                "size": 3,
+                "download_url": "",
+                "upload_url": ""
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(article.doi, None);
+        assert_eq!(article.url, None);
+        assert_eq!(article.url_public_html, None);
+        assert_eq!(article.url_public_api, None);
+        assert_eq!(article.url_private_html, None);
+        assert_eq!(article.url_private_api, None);
+        assert_eq!(article.figshare_url, None);
+        assert_eq!(article.thumb, None);
+        assert_eq!(
+            article
+                .license
+                .as_ref()
+                .and_then(|license| license.url.clone()),
+            None
+        );
+        assert_eq!(article.files[0].download_url, None);
+        assert_eq!(article.files[0].upload_url, None);
     }
 
     #[test]
