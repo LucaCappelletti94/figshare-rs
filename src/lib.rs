@@ -34,6 +34,8 @@ pub mod model;
 pub mod poll;
 pub mod query;
 mod serde_util;
+pub use client::{Auth, FigshareClient, FigshareClientBuilder};
+pub use downloads::{DownloadStream, ResolvedDownload};
 pub use endpoint::Endpoint;
 pub use error::{FieldError, FigshareError};
 pub use ids::{ArticleId, CategoryId, Doi, DoiError, FileId, LicenseId};
