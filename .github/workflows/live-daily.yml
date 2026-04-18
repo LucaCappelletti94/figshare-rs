@@ -1,15 +1,10 @@
 name: Live Daily
+run-name: Live Daily
 
 on:
   schedule:
     - cron: "23 3 * * *"
   workflow_dispatch:
-    inputs:
-      run_authenticated:
-        description: Run the authenticated draft-only smoke test
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: read
@@ -41,19 +36,29 @@ jobs:
     name: Authenticated API Smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_authenticated && secrets.FIGSHARE_TOKEN != '' }}
     env:
       FIGSHARE_TOKEN: ${{ secrets.FIGSHARE_TOKEN }}
 
     steps:
+      - name: Require FIGSHARE_TOKEN for authenticated smoke
+        if: ${{ env.FIGSHARE_TOKEN == '' }}
+        run: |
+          echo "FIGSHARE_TOKEN is not configured for this repository."
+          echo "Add the repository secret before running the authenticated smoke workflow."
+          exit 1
+
       - name: Checkout
+        if: ${{ env.FIGSHARE_TOKEN != '' }}
         uses: actions/checkout@v4
 
       - name: Install stable toolchain
+        if: ${{ env.FIGSHARE_TOKEN != '' }}
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo artifacts
+        if: ${{ env.FIGSHARE_TOKEN != '' }}
         uses: Swatinem/rust-cache@v2
 
       - name: Run authenticated live smoke suite
+        if: ${{ env.FIGSHARE_TOKEN != '' }}
         run: cargo test --test live_account --all-features --locked -- --ignored --nocapture --test-threads=1
