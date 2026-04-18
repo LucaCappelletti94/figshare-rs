@@ -49,7 +49,7 @@ jobs:
       - name: Check documentation and workflow links
         uses: lycheeverse/lychee-action@v2.7.0
         with:
-          args: README.md docs/live-api-ci.md .github/workflows/*.yml
+          args: README.md .github/workflows/*.yml
           lycheeVersion: v0.21.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -254,20 +254,22 @@ jobs:
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
 
-      - name: Install cargo-tarpaulin
-        uses: taiki-e/install-action@cargo-tarpaulin
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Check coverage
-        run: cargo tarpaulin --all-features --skip-clean --locked --fail-under 90 --out Stdout --out Xml
+        run: cargo llvm-cov --all-features --locked --lcov --output-path lcov.info --fail-under-lines 90
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: ./cobertura.xml
+          files: ./lcov.info
           disable_search: true
           fail_ci_if_error: true
           flags: unittests

@@ -218,6 +218,19 @@ mod tests {
     }
 
     #[test]
+    fn numeric_ids_serialize_and_convert_from_u64() {
+        let article = ArticleId::from(21);
+        let file = FileId::from(22);
+        let category = CategoryId::from(23);
+        let license = LicenseId::from(24);
+
+        assert_eq!(article.to_string(), "21");
+        assert_eq!(serde_json::to_string(&file).unwrap(), "22");
+        assert_eq!(serde_json::to_string(&category).unwrap(), "23");
+        assert_eq!(serde_json::to_string(&license).unwrap(), "24");
+    }
+
+    #[test]
     fn doi_normalization_trims_prefixes_and_case() {
         assert_eq!(
             Doi::new("  HTTPS://DOI.ORG/10.6084/M9.FIGSHARE.123  ")
@@ -228,6 +241,12 @@ mod tests {
         assert_eq!(
             Doi::new("doi:10.6084/M9.FIGSHARE.456").unwrap().as_str(),
             "10.6084/m9.figshare.456"
+        );
+        assert_eq!(
+            Doi::new("https://dx.doi.org/10.6084/M9.FIGSHARE.789")
+                .unwrap()
+                .as_str(),
+            "10.6084/m9.figshare.789"
         );
     }
 

@@ -289,3 +289,61 @@ async fn write_stream_to_path(
     stream.resolved.bytes_written = bytes_written;
     Ok(stream.resolved)
 }
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use futures_util::stream;
+    use url::Url;
+
+    use super::{write_stream_to_path, DownloadStream, ResolvedDownload};
+    use crate::ids::{ArticleId, FileId};
+
+    #[tokio::test]
+    async fn write_stream_to_path_persists_bytes_and_updates_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("artifact.bin");
+        let stream = DownloadStream {
+            resolved: ResolvedDownload {
+                resolved_article: ArticleId(7),
+                resolved_file_id: FileId(9),
+                resolved_name: "artifact.bin".into(),
+                download_url: Url::parse("https://ndownloader.figshare.com/files/9").unwrap(),
+                bytes_written: 0,
+            },
+            content_length: Some(5),
+            content_type: Some("application/octet-stream".into()),
+            content_disposition: Some("attachment".into()),
+            stream: Box::pin(stream::iter(vec![
+                Ok(Bytes::from_static(b"he")),
+                Ok(Bytes::from_static(b"llo")),
+            ])),
+        };
+
+        let resolved = write_stream_to_path(stream, &path).await.unwrap();
+        assert_eq!(resolved.bytes_written, 5);
+        assert_eq!(std::fs::read(&path).unwrap(), b"hello");
+    }
+
+    #[test]
+    fn download_stream_debug_hides_stream_body() {
+        let stream = DownloadStream {
+            resolved: ResolvedDownload {
+                resolved_article: ArticleId(1),
+                resolved_file_id: FileId(2),
+                resolved_name: "artifact.bin".into(),
+                download_url: Url::parse("https://ndownloader.figshare.com/files/2").unwrap(),
+                bytes_written: 0,
+            },
+            content_length: Some(3),
+            content_type: Some("application/octet-stream".into()),
+            content_disposition: None,
+            stream: Box::pin(stream::iter(vec![Ok(Bytes::from_static(b"abc"))])),
+        };
+
+        let debug = format!("{stream:?}");
+        assert!(debug.contains("DownloadStream"));
+        assert!(debug.contains("artifact.bin"));
+        assert!(!debug.contains("abc"));
+    }
+}

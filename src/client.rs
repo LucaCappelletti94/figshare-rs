@@ -1236,12 +1236,14 @@ where
 mod tests {
     use std::env::VarError;
     use std::io::Cursor;
+    use std::path::Path;
     use std::time::Duration;
 
     use axum::extract::State;
     use axum::http::StatusCode;
-    use axum::routing::get;
+    use axum::routing::{get, post};
     use axum::{Json, Router};
+    use reqwest::header::{AUTHORIZATION, LOCATION};
     use reqwest::Method;
     use secrecy::ExposeSecret;
     use serde_json::json;
@@ -1304,6 +1306,26 @@ mod tests {
             }
             other => panic!("unexpected error: {other:?}"),
         }
+    }
+
+    #[test]
+    fn auth_debug_redacts_tokens_and_custom_env_vars_are_supported() {
+        const CUSTOM_ENV: &str = "FIGSHARE_RS_TEST_TOKEN";
+
+        let auth = Auth::new("secret-token");
+        assert!(!auth.is_anonymous());
+        assert!(format!("{auth:?}").contains("<redacted>"));
+
+        let _lock = ENV_LOCK.lock().unwrap();
+        let _guard = EnvVarGuard::set(CUSTOM_ENV, Some("custom-token"));
+        assert_eq!(
+            Auth::from_env_var(CUSTOM_ENV)
+                .unwrap()
+                .token
+                .unwrap()
+                .expose_secret(),
+            "custom-token"
+        );
     }
 
     #[test]
@@ -1455,5 +1477,220 @@ mod tests {
             )
             .unwrap();
         assert_eq!(external.query(), None);
+    }
+
+    #[test]
+    fn request_helpers_enforce_origin_policies() {
+        let client = FigshareClient::builder(Auth::new("token"))
+            .endpoint(Endpoint::Custom(
+                Url::parse("https://api.example.test/v2/").unwrap(),
+            ))
+            .build()
+            .unwrap();
+
+        let api_error = client
+            .request_url(
+                Method::GET,
+                Url::parse("https://evil.example.test/v2/articles").unwrap(),
+                false,
+            )
+            .unwrap_err();
+        assert!(
+            matches!(api_error, FigshareError::InvalidState(message) if message.contains("different origin"))
+        );
+
+        let upload_request = client
+            .upload_request_url(
+                Method::PUT,
+                Url::parse("https://uploads.figshare.com/upload/token").unwrap(),
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(
+            upload_request.url().host_str(),
+            Some("uploads.figshare.com")
+        );
+        assert_eq!(
+            upload_request.headers()[AUTHORIZATION].to_str().unwrap(),
+            "token token"
+        );
+
+        let upload_error = client
+            .upload_request_url(
+                Method::PUT,
+                Url::parse("https://evil.example.test/upload/token").unwrap(),
+            )
+            .unwrap_err();
+        assert!(
+            matches!(upload_error, FigshareError::InvalidState(message) if message.contains("different origin"))
+        );
+
+        let public_download = client
+            .download_request_url(
+                Method::GET,
+                Url::parse("https://downloads.example.test/file.bin").unwrap(),
+                false,
+            )
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(public_download.url().query(), None);
+    }
+
+    #[tokio::test]
+    async fn execute_location_supports_multiple_success_shapes() {
+        let app = Router::new()
+            .route(
+                "/v2/location/header",
+                post(|| async {
+                    (
+                        StatusCode::CREATED,
+                        [(LOCATION, "/v2/account/articles/1")],
+                        Json(json!({ "ignored": true })),
+                    )
+                }),
+            )
+            .route(
+                "/v2/location/object",
+                post(|| async {
+                    (
+                        StatusCode::CREATED,
+                        Json(json!({ "location": "/v2/account/articles/2" })),
+                    )
+                }),
+            )
+            .route(
+                "/v2/location/string",
+                post(|| async { (StatusCode::CREATED, Json(json!("/v2/account/articles/3"))) }),
+            )
+            .route(
+                "/v2/location/text",
+                post(|| async { (StatusCode::CREATED, "/v2/account/articles/4") }),
+            )
+            .route("/v2/location/empty", post(|| async { StatusCode::CREATED }));
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let client = FigshareClient::builder(Auth::anonymous())
+            .endpoint(Endpoint::Custom(
+                Url::parse(&format!("http://{addr}/v2/")).unwrap(),
+            ))
+            .build()
+            .unwrap();
+
+        let header = client
+            .execute_location(
+                client
+                    .request(Method::POST, "location/header", false)
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let object = client
+            .execute_location(
+                client
+                    .request(Method::POST, "location/object", false)
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let string = client
+            .execute_location(
+                client
+                    .request(Method::POST, "location/string", false)
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let text = client
+            .execute_location(
+                client
+                    .request(Method::POST, "location/text", false)
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let empty = client
+            .execute_location(
+                client
+                    .request(Method::POST, "location/empty", false)
+                    .unwrap(),
+            )
+            .await
+            .unwrap_err();
+
+        assert_eq!(header.path(), "/v2/account/articles/1");
+        assert_eq!(object.path(), "/v2/account/articles/2");
+        assert_eq!(string.path(), "/v2/account/articles/3");
+        assert_eq!(text.path(), "/v2/account/articles/4");
+        assert!(
+            matches!(empty, FigshareError::InvalidState(message) if message.contains("did not include a location"))
+        );
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn list_paginated_files_fetches_multiple_pages() {
+        async fn files_route(
+            State(()): State<()>,
+            axum::extract::Query(query): axum::extract::Query<
+                std::collections::HashMap<String, String>,
+            >,
+        ) -> Json<Vec<serde_json::Value>> {
+            let page = query
+                .get("page")
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(1);
+            let count = if page == 1 { 1_000 } else { 1 };
+            let start = if page == 1 { 1 } else { 1_001 };
+            Json(
+                (start..start + count)
+                    .map(|id| json!({ "id": id, "name": format!("file-{id}.bin"), "size": 1 }))
+                    .collect(),
+            )
+        }
+
+        let app = Router::new()
+            .route("/v2/account/articles/1/files", get(files_route))
+            .with_state(());
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+
+        let client = FigshareClient::builder(Auth::new("token"))
+            .endpoint(Endpoint::Custom(
+                Url::parse(&format!("http://{addr}/v2/")).unwrap(),
+            ))
+            .build()
+            .unwrap();
+
+        let files = client
+            .list_paginated_files("account/articles/1/files", true)
+            .await
+            .unwrap();
+        assert_eq!(files.len(), 1_001);
+        assert_eq!(files.first().unwrap().id.0, 1);
+        assert_eq!(files.last().unwrap().id.0, 1_001);
+
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn upload_path_rejects_missing_filename() {
+        let client = FigshareClient::anonymous().unwrap();
+        let error = client
+            .upload_path(crate::ArticleId(1), Path::new("/"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, FigshareError::InvalidState(message) if message.contains("path has no final file name segment"))
+        );
     }
 }

@@ -130,4 +130,15 @@ mod tests {
         }
         assert!(format!("{spec:?}").contains("artifact.bin"));
     }
+
+    #[test]
+    fn path_upload_debug_shows_path_variant() {
+        let spec = UploadSpec::from_path(PathBuf::from("/tmp/archive.tar.gz")).unwrap();
+
+        match &spec.source {
+            UploadSource::Path(path) => assert_eq!(path, &PathBuf::from("/tmp/archive.tar.gz")),
+            UploadSource::Reader { .. } => panic!("expected path source"),
+        }
+        assert!(format!("{:?}", spec.source).contains("archive.tar.gz"));
+    }
 }

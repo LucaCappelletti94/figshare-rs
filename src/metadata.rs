@@ -650,7 +650,10 @@ impl ArticleMetadataBuilder {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::{ArticleMetadata, ArticleMetadataBuildError, AuthorReference, DefinedType};
+    use crate::ids::Doi;
 
     #[test]
     fn defined_type_accepts_strings_and_ids() {
@@ -666,6 +669,78 @@ mod tests {
     }
 
     #[test]
+    fn defined_type_round_trips_all_current_api_variants() {
+        let cases = [
+            (DefinedType::Figure, "figure", 1),
+            (DefinedType::Media, "media", 2),
+            (DefinedType::Dataset, "dataset", 3),
+            (DefinedType::Poster, "poster", 5),
+            (DefinedType::JournalContribution, "journal contribution", 6),
+            (DefinedType::Presentation, "presentation", 7),
+            (DefinedType::Thesis, "thesis", 8),
+            (DefinedType::Software, "software", 9),
+            (DefinedType::OnlineResource, "online resource", 11),
+            (DefinedType::Preprint, "preprint", 12),
+            (DefinedType::Book, "book", 13),
+            (
+                DefinedType::ConferenceContribution,
+                "conference contribution",
+                14,
+            ),
+            (DefinedType::Chapter, "chapter", 15),
+            (DefinedType::PeerReview, "peer review", 16),
+            (DefinedType::EducationalResource, "educational resource", 17),
+            (DefinedType::Report, "report", 18),
+            (DefinedType::Standard, "standard", 19),
+            (DefinedType::Composition, "composition", 20),
+            (DefinedType::Funding, "funding", 21),
+            (DefinedType::PhysicalObject, "physical object", 22),
+            (DefinedType::DataManagementPlan, "data management plan", 23),
+            (DefinedType::Workflow, "workflow", 24),
+            (DefinedType::Monograph, "monograph", 25),
+            (DefinedType::Performance, "performance", 26),
+            (DefinedType::Event, "event", 27),
+            (DefinedType::Service, "service", 28),
+            (DefinedType::Model, "model", 29),
+        ];
+
+        for (defined_type, api_name, api_id) in cases {
+            assert_eq!(defined_type.api_name(), api_name);
+            assert_eq!(defined_type.api_id(), Some(api_id));
+            assert_eq!(DefinedType::from_api_name(api_name), defined_type);
+            assert_eq!(DefinedType::from_api_id(api_id), defined_type);
+        }
+    }
+
+    #[test]
+    fn defined_type_aliases_and_unknown_values_are_preserved() {
+        assert_eq!(
+            DefinedType::from_api_name("paper"),
+            DefinedType::JournalContribution
+        );
+        assert_eq!(DefinedType::from_api_name("code"), DefinedType::Software);
+        assert_eq!(
+            DefinedType::from_api_name("metadata"),
+            DefinedType::OnlineResource
+        );
+        assert_eq!(
+            DefinedType::from_api_name("custom widget"),
+            DefinedType::Unknown("custom widget".into())
+        );
+        assert_eq!(DefinedType::Unknown("31".into()).api_id(), Some(31));
+        assert_eq!(
+            DefinedType::from_api_id(31),
+            DefinedType::Unknown("31".into())
+        );
+    }
+
+    #[test]
+    fn defined_type_rejects_invalid_numeric_shapes() {
+        assert!(serde_json::from_str::<DefinedType>("-1").is_err());
+        assert!(serde_json::from_str::<DefinedType>("1.5").is_err());
+    }
+
+    #[test]
     fn metadata_builder_requires_title_and_defined_type() {
         assert_eq!(
             ArticleMetadata::builder().build().unwrap_err(),
@@ -674,6 +749,17 @@ mod tests {
         assert_eq!(
             ArticleMetadata::builder().title("x").build().unwrap_err(),
             ArticleMetadataBuildError::MissingDefinedType
+        );
+    }
+
+    #[test]
+    fn author_reference_helpers_cover_id_and_name_constructors() {
+        assert_eq!(AuthorReference::id(7), AuthorReference::Id { id: 7 });
+        assert_eq!(
+            AuthorReference::name("Doe, Jane"),
+            AuthorReference::Name {
+                name: "Doe, Jane".into()
+            }
         );
     }
 
@@ -702,5 +788,70 @@ mod tests {
         assert_eq!(payload["authors"][0]["id"], 7);
         assert_eq!(payload["authors"][1]["name"], "Doe, Jane");
         assert_eq!(payload["custom_fields"]["location"], "Amsterdam");
+    }
+
+    #[test]
+    fn metadata_builder_populates_every_optional_field() {
+        let metadata = ArticleMetadata::builder()
+            .title("Example dataset")
+            .description("Long-form description")
+            .defined_type(DefinedType::Dataset)
+            .tag("alpha")
+            .tag("beta")
+            .keyword("science")
+            .keyword("open-data")
+            .reference("https://example.com/reference")
+            .category_id(11)
+            .category_id(12)
+            .author_id(3)
+            .author_named("Doe, Jane")
+            .custom_field_text("campus", "Pisa")
+            .custom_field_json("metrics", json!({ "downloads": 42 }))
+            .funding("Grant-42")
+            .license_id(1)
+            .doi(Doi::new("10.6084/m9.figshare.999").unwrap())
+            .resource_doi("10.1000/example")
+            .resource_title("Related resource")
+            .build()
+            .unwrap();
+
+        assert_eq!(metadata.title, "Example dataset");
+        assert_eq!(
+            metadata.description.as_deref(),
+            Some("Long-form description")
+        );
+        assert_eq!(metadata.defined_type, DefinedType::Dataset);
+        assert_eq!(metadata.tags, vec!["alpha", "beta"]);
+        assert_eq!(metadata.keywords, vec!["science", "open-data"]);
+        assert_eq!(metadata.references, vec!["https://example.com/reference"]);
+        assert_eq!(metadata.categories.len(), 2);
+        assert_eq!(metadata.authors.len(), 2);
+        assert_eq!(metadata.funding.as_deref(), Some("Grant-42"));
+        assert_eq!(metadata.license.unwrap().0, 1);
+        assert_eq!(
+            metadata.doi.as_ref().map(Doi::as_str),
+            Some("10.6084/m9.figshare.999")
+        );
+        assert_eq!(metadata.resource_doi.as_deref(), Some("10.1000/example"));
+        assert_eq!(metadata.resource_title.as_deref(), Some("Related resource"));
+
+        let payload = metadata.to_payload();
+        assert_eq!(payload["description"], "Long-form description");
+        assert_eq!(payload["tags"], json!(["alpha", "beta"]));
+        assert_eq!(payload["keywords"], json!(["science", "open-data"]));
+        assert_eq!(
+            payload["references"],
+            json!(["https://example.com/reference"])
+        );
+        assert_eq!(payload["categories"], json!([11, 12]));
+        assert_eq!(payload["authors"][0]["id"], 3);
+        assert_eq!(payload["authors"][1]["name"], "Doe, Jane");
+        assert_eq!(payload["custom_fields"]["campus"], "Pisa");
+        assert_eq!(payload["custom_fields"]["metrics"]["downloads"], 42);
+        assert_eq!(payload["funding"], "Grant-42");
+        assert_eq!(payload["license"], 1);
+        assert_eq!(payload["doi"], "10.6084/m9.figshare.999");
+        assert_eq!(payload["resource_doi"], "10.1000/example");
+        assert_eq!(payload["resource_title"], "Related resource");
     }
 }

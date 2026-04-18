@@ -359,4 +359,58 @@ mod tests {
             OptionalBoolHolder { value: Some(true) }
         );
     }
+
+    #[test]
+    fn u64ish_rejects_invalid_values() {
+        assert!(serde_json::from_value::<U64Holder>(serde_json::json!({ "value": -1 })).is_err());
+        assert!(serde_json::from_value::<U64Holder>(serde_json::json!({ "value": 1.25 })).is_err());
+        assert!(
+            serde_json::from_value::<U64Holder>(serde_json::json!({ "value": "nope" })).is_err()
+        );
+    }
+
+    #[test]
+    fn optional_u64ish_handles_null_and_invalid_values() {
+        assert_eq!(
+            serde_json::from_value::<OptionalU64Holder>(serde_json::json!({ "value": null }))
+                .unwrap(),
+            OptionalU64Holder { value: None }
+        );
+        assert!(
+            serde_json::from_value::<OptionalU64Holder>(serde_json::json!({ "value": -2 }))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn stringish_covers_integer_and_invalid_negative_values() {
+        assert_eq!(
+            serde_json::from_value::<StringHolder>(serde_json::json!({ "value": 17 })).unwrap(),
+            StringHolder { value: "17".into() }
+        );
+        assert!(
+            serde_json::from_value::<StringHolder>(serde_json::json!({ "value": -1 })).is_err()
+        );
+    }
+
+    #[test]
+    fn boolish_rejects_invalid_numeric_and_string_values() {
+        assert!(serde_json::from_value::<BoolHolder>(serde_json::json!({ "value": 2 })).is_err());
+        assert!(
+            serde_json::from_value::<BoolHolder>(serde_json::json!({ "value": "yes" })).is_err()
+        );
+    }
+
+    #[test]
+    fn optional_boolish_handles_null_and_invalid_values() {
+        assert_eq!(
+            serde_json::from_value::<OptionalBoolHolder>(serde_json::json!({ "value": null }))
+                .unwrap(),
+            OptionalBoolHolder { value: None }
+        );
+        assert!(
+            serde_json::from_value::<OptionalBoolHolder>(serde_json::json!({ "value": 2 }))
+                .is_err()
+        );
+    }
 }

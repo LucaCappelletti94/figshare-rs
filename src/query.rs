@@ -519,8 +519,23 @@ impl ArticleQueryBuilder {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::{ArticleOrder, ArticleQuery, OrderDirection};
     use crate::metadata::DefinedType;
+
+    #[test]
+    fn order_enums_match_api_strings() {
+        assert_eq!(ArticleOrder::CreatedDate.as_api_str(), "created_date");
+        assert_eq!(ArticleOrder::PublishedDate.as_api_str(), "published_date");
+        assert_eq!(ArticleOrder::ModifiedDate.as_api_str(), "modified_date");
+        assert_eq!(ArticleOrder::Views.as_api_str(), "views");
+        assert_eq!(ArticleOrder::Shares.as_api_str(), "shares");
+        assert_eq!(ArticleOrder::Downloads.as_api_str(), "downloads");
+        assert_eq!(ArticleOrder::Cites.as_api_str(), "cites");
+        assert_eq!(OrderDirection::Asc.as_api_str(), "asc");
+        assert_eq!(OrderDirection::Desc.as_api_str(), "desc");
+    }
 
     #[test]
     fn query_serializes_public_list_pairs() {
@@ -540,6 +555,60 @@ mod tests {
         assert!(pairs.contains(&("item_type".into(), "3".into())));
         assert!(pairs.contains(&("doi".into(), "10.6084/m9.figshare.123".into())));
         assert!(pairs.contains(&("foo".into(), "bar".into())));
+    }
+
+    #[test]
+    fn builder_populates_all_fields_and_own_search_serializes_them() {
+        let query = ArticleQuery::builder()
+            .search_for("figshare")
+            .published_since("2024-01-01")
+            .modified_since("2024-02-01")
+            .institution(7)
+            .group(11)
+            .item_type(DefinedType::Dataset)
+            .resource_doi("10.1000/resource")
+            .doi("10.6084/m9.figshare.123")
+            .handle("12345/abc")
+            .project_id(99)
+            .order(ArticleOrder::Downloads)
+            .order_direction(OrderDirection::Asc)
+            .offset(20)
+            .limit(10)
+            .custom("custom_flag", "yes")
+            .build();
+
+        assert_eq!(query.search_for.as_deref(), Some("figshare"));
+        assert_eq!(query.published_since.as_deref(), Some("2024-01-01"));
+        assert_eq!(query.modified_since.as_deref(), Some("2024-02-01"));
+        assert_eq!(query.institution, Some(7));
+        assert_eq!(query.group, Some(11));
+        assert_eq!(query.item_type, Some(DefinedType::Dataset));
+        assert_eq!(query.resource_doi.as_deref(), Some("10.1000/resource"));
+        assert_eq!(query.doi.as_deref(), Some("10.6084/m9.figshare.123"));
+        assert_eq!(query.handle.as_deref(), Some("12345/abc"));
+        assert_eq!(query.project_id, Some(99));
+        assert_eq!(query.order, Some(ArticleOrder::Downloads));
+        assert_eq!(query.order_direction, Some(OrderDirection::Asc));
+        assert_eq!(query.offset, Some(20));
+        assert_eq!(query.limit, Some(10));
+        assert_eq!(query.custom, vec![("custom_flag".into(), "yes".into())]);
+
+        let body = query.as_own_search_body().unwrap();
+        assert_eq!(body["search_for"], "figshare");
+        assert_eq!(body["published_since"], "2024-01-01");
+        assert_eq!(body["modified_since"], "2024-02-01");
+        assert_eq!(body["institution"], 7);
+        assert_eq!(body["group"], 11);
+        assert_eq!(body["item_type"], 3);
+        assert_eq!(body["resource_doi"], "10.1000/resource");
+        assert_eq!(body["doi"], "10.6084/m9.figshare.123");
+        assert_eq!(body["handle"], "12345/abc");
+        assert_eq!(body["project_id"], 99);
+        assert_eq!(body["order"], "downloads");
+        assert_eq!(body["order_direction"], "asc");
+        assert_eq!(body["offset"], 20);
+        assert_eq!(body["limit"], 10);
+        assert_eq!(body["custom_flag"], "yes");
     }
 
     #[test]
@@ -578,5 +647,72 @@ mod tests {
     fn public_list_rejects_search_only_filters() {
         let query = ArticleQuery::builder().project_id(7).page(1).build();
         assert!(query.as_public_list_query_pairs().is_err());
+    }
+
+    #[test]
+    fn own_list_allows_only_pagination_and_custom_pairs() {
+        let query = ArticleQuery::builder()
+            .page(3)
+            .page_size(40)
+            .custom("cursor", "abc")
+            .build();
+
+        assert_eq!(
+            query.as_own_list_query_pairs().unwrap(),
+            vec![
+                ("page".into(), "3".into()),
+                ("page_size".into(), "40".into()),
+                ("cursor".into(), "abc".into())
+            ]
+        );
+    }
+
+    #[test]
+    fn public_search_and_own_search_reject_resource_title() {
+        let query = ArticleQuery::builder()
+            .search_for("example")
+            .resource_title("legacy")
+            .build();
+        assert!(query.as_public_search_body().is_err());
+        assert!(query.as_own_search_body().is_err());
+    }
+
+    #[test]
+    fn public_list_omits_unknown_defined_type_without_numeric_id() {
+        let query = ArticleQuery::builder()
+            .item_type(DefinedType::Unknown("custom widget".into()))
+            .page(1)
+            .build();
+        let pairs = query.as_public_list_query_pairs().unwrap();
+        assert_eq!(pairs, vec![("page".into(), "1".into())]);
+    }
+
+    #[test]
+    fn public_search_serializes_common_fields_and_custom_values() {
+        let query = ArticleQuery::builder()
+            .search_for("climate")
+            .published_since("2024-01-01")
+            .modified_since("2024-02-01")
+            .institution(5)
+            .group(6)
+            .handle("12345/example")
+            .custom("extra", "value")
+            .limit(5)
+            .build();
+        let body = query.as_public_search_body().unwrap();
+
+        assert_eq!(
+            body,
+            json!({
+                "search_for": "climate",
+                "published_since": "2024-01-01",
+                "modified_since": "2024-02-01",
+                "institution": 5,
+                "group": 6,
+                "handle": "12345/example",
+                "extra": "value",
+                "limit": 5
+            })
+        );
     }
 }
