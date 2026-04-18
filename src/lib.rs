@@ -34,6 +34,8 @@ pub mod model;
 pub mod poll;
 pub mod query;
 mod serde_util;
+pub mod upload;
+pub mod workflow;
 pub use client::{Auth, FigshareClient, FigshareClientBuilder};
 pub use downloads::{DownloadStream, ResolvedDownload};
 pub use endpoint::Endpoint;
@@ -50,3 +52,5 @@ pub use model::{
 };
 pub use poll::PollOptions;
 pub use query::{ArticleOrder, ArticleQuery, ArticleQueryBuilder, OrderDirection};
+pub use upload::{FileReplacePolicy, UploadSource, UploadSpec};
+pub use workflow::PublishedArticle;
