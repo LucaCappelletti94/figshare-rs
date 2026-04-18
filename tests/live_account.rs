@@ -69,6 +69,20 @@ fn part_bytes(bytes: &[u8], part: &UploadPart) -> Vec<u8> {
     bytes[start..end].to_vec()
 }
 
+fn is_permission_cleanup_error(error: &FigshareError) -> bool {
+    matches!(
+        error,
+        FigshareError::Http {
+            status,
+            message,
+            ..
+        } if *status == StatusCode::FORBIDDEN
+            && message
+                .as_deref()
+                .is_some_and(|message| message.contains("Insufficient permissions"))
+    )
+}
+
 async fn cleanup_article(
     client: &FigshareClient,
     article_id: ArticleId,
@@ -82,9 +96,16 @@ async fn cleanup_article(
     };
 
     if article.is_public_article() {
-        client
-            .unpublish_article(article_id, UNPUBLISH_REASON)
-            .await?;
+        match client.unpublish_article(article_id, UNPUBLISH_REASON).await {
+            Ok(_) => {}
+            Err(error) if is_permission_cleanup_error(&error) => {
+                eprintln!(
+                    "warning: could not unpublish live smoke article {article_id} during cleanup: {error}"
+                );
+                return Ok(());
+            }
+            Err(error) => return Err(Box::new(error)),
+        }
     }
 
     if let Ok(files) = client.list_files(article_id).await {
@@ -96,6 +117,12 @@ async fn cleanup_article(
     match client.delete_article(article_id).await {
         Ok(()) => Ok(()),
         Err(FigshareError::Http { status, .. }) if status == StatusCode::NOT_FOUND => Ok(()),
+        Err(error) if is_permission_cleanup_error(&error) => {
+            eprintln!(
+                "warning: could not delete live smoke article {article_id} during cleanup: {error}"
+            );
+            Ok(())
+        }
         Err(error) => Err(Box::new(error)),
     }
 }
