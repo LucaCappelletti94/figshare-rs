@@ -10,6 +10,15 @@ Async Rust client for core [Figshare](https://figshare.com/) workflows.
 
 It provides a typed API built around [`FigshareClient`](https://docs.rs/figshare-rs/latest/figshare_rs/client/struct.FigshareClient.html) for public article reads, exact DOI lookup, latest-version resolution, private article updates, hosted uploads, publication, and public or private file downloads, with typed models, metadata and query builders, and higher-level workflow helpers. Use [`FigshareClient::anonymous`](https://docs.rs/figshare-rs/latest/figshare_rs/client/struct.FigshareClient.html#method.anonymous) for public reads and `FIGSHARE_TOKEN` for authenticated account workflows.
 
+> [!WARNING]
+> For regular free `figshare.com` accounts, Figshare currently offers a `20GB` total storage quota and a `20GB` maximum individual file size, not `20GB` per document:
+> https://help.figshare.com/article/figshare-account-limits
+> https://info.figshare.com/user-guide/file-size-limits-and-storage/
+>
+> I created this crate thinking that the `20GB` limit was per document rather than total account storage. If you are looking for a general-purpose personal archival workflow, I suggest using [zenodo-rs](https://github.com/LucaCappelletti94/zenodo-rs) instead.
+>
+> This crate still exists because Figshare is used by institutions and publishers, and the API client can still be useful in those environments.
+
 ## Examples
 
 ```rust
