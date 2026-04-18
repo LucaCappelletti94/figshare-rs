@@ -95,7 +95,10 @@ jobs:
         run: cargo +1.86.0 check --all-features --locked
 
       - name: Test crate with MSRV
-        run: cargo +1.86.0 test --all-features --locked --lib --tests --doc
+        run: cargo +1.86.0 test --all-features --locked --lib --tests
+
+      - name: Test docs with MSRV
+        run: cargo +1.86.0 test --all-features --locked --doc
 
   clippy:
     name: Clippy
@@ -105,6 +108,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install stable toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -193,8 +198,26 @@ jobs:
       - name: Install cargo-semver-checks
         uses: taiki-e/install-action@cargo-semver-checks
 
+      - name: Resolve semver baseline
+        id: semver-baseline
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            baseline="$(git merge-base HEAD "origin/${{ github.base_ref }}")"
+          elif git rev-parse --verify HEAD^ >/dev/null 2>&1; then
+            baseline="$(git rev-parse HEAD^)"
+          else
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "rev=$baseline" >> "$GITHUB_OUTPUT"
+
       - name: Check semver compatibility
-        run: cargo semver-checks check-release --release-type patch
+        if: ${{ steps.semver-baseline.outputs.skip != 'true' }}
+        run: cargo semver-checks check-release --release-type patch --baseline-rev "${{ steps.semver-baseline.outputs.rev }}"
 
   audit:
     name: Audit
