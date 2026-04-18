@@ -8,34 +8,7 @@
 
 Async Rust client for core [Figshare](https://figshare.com/) workflows.
 
-It covers public article reads, exact DOI lookup, latest-version resolution,
-private article updates, hosted uploads, publication, and public/private file
-downloads through a typed API built around
-[`FigshareClient`](https://docs.rs/figshare-rs/latest/figshare_rs/client/struct.FigshareClient.html).
-
-The crate provides:
-
-- typed request and response models with forward-compatible `extra` fields
-- metadata and query builders
-- high-level workflow helpers for upload and publish flows
-- mock-heavy tests plus scheduled live smoke checks
-
-## Install
-
-```toml
-[dependencies]
-figshare-rs = "0.1"
-```
-
-Optional features:
-
-- `native-tls`: use `reqwest` with `native-tls` instead of the default `rustls-tls`
-
-If your application needs a Tokio runtime, `rt` plus `macros` is enough:
-
-```toml
-tokio = { version = "1", features = ["rt", "macros"] }
-```
+It provides a typed API built around [`FigshareClient`](https://docs.rs/figshare-rs/latest/figshare_rs/client/struct.FigshareClient.html) for public article reads, exact DOI lookup, latest-version resolution, private article updates, hosted uploads, publication, and public or private file downloads, with typed models, metadata and query builders, and higher-level workflow helpers. Use [`FigshareClient::anonymous`](https://docs.rs/figshare-rs/latest/figshare_rs/client/struct.FigshareClient.html#method.anonymous) for public reads and `FIGSHARE_TOKEN` for authenticated account workflows.
 
 ## Examples
 
@@ -88,17 +61,3 @@ match upload.source {
 }
 # Ok::<(), figshare_rs::ArticleMetadataBuildError>(())
 ```
-
-## Authentication
-
-- `FIGSHARE_TOKEN` is the standard env var for authenticated account workflows.
-- Use [`FigshareClient::anonymous`](https://docs.rs/figshare-rs/latest/figshare_rs/client/struct.FigshareClient.html#method.anonymous) for public reads.
-- Hosted upload calls use the same token against both the main API and the upload service.
-- Private file downloads add the token to the Figshare downloader URL when required by the API.
-
-## CI
-
-- `ci.yml` runs formatting, docs, clippy, tests, semver, audit, packaging, and coverage.
-- `live-daily.yml` runs the public live smoke test every day.
-- Authenticated live smoke is draft-only, requires `FIGSHARE_TOKEN`, and is manual opt-in.
-- The live CI setup is documented in [docs/live-api-ci.md](docs/live-api-ci.md).
