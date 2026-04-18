@@ -762,6 +762,30 @@ impl FigshareClient {
         self.wait_for_public_article_by_url(&location).await
     }
 
+    /// Unpublishes a public article back into a private draft.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if authentication is missing, if the request fails, or
+    /// if Figshare returns a non-success response.
+    pub async fn unpublish_article(
+        &self,
+        id: ArticleId,
+        reason: &str,
+    ) -> Result<Article, FigshareError> {
+        let payload = serde_json::json!({ "reason": reason });
+        self.execute_unit(
+            self.request(
+                Method::POST,
+                &format!("account/articles/{id}/unpublish"),
+                true,
+            )?
+            .json(&payload),
+        )
+        .await?;
+        self.wait_for_own_article_private(id).await
+    }
+
     /// Lists files attached to a private article.
     ///
     /// # Errors
@@ -1043,6 +1067,27 @@ impl FigshareClient {
             }
             if start.elapsed() >= self.poll.max_wait {
                 return Err(FigshareError::Timeout("private article publication"));
+            }
+
+            sleep(delay).await;
+            delay = min(delay.saturating_mul(2), self.poll.max_delay);
+        }
+    }
+
+    pub(crate) async fn wait_for_own_article_private(
+        &self,
+        article_id: ArticleId,
+    ) -> Result<Article, FigshareError> {
+        let start = Instant::now();
+        let mut delay = self.poll.initial_delay;
+
+        loop {
+            let article = self.get_own_article(article_id).await?;
+            if !article.is_public_article() {
+                return Ok(article);
+            }
+            if start.elapsed() >= self.poll.max_wait {
+                return Err(FigshareError::Timeout("private article unpublication"));
             }
 
             sleep(delay).await;
