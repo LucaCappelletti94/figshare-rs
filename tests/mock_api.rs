@@ -299,7 +299,7 @@ async fn private_article_methods_follow_location_and_send_auth_header() {
 }
 
 #[tokio::test]
-async fn publish_and_unpublish_wait_for_visibility_changes() {
+async fn publish_waits_for_visibility_changes() {
     let server = MockFigshareServer::start().await;
     let client = server.client();
 
@@ -321,44 +321,11 @@ async fn publish_and_unpublish_wait_for_visibility_changes() {
         StatusCode::OK,
         public_article_json(&server, 6, 1),
     );
-    server.enqueue_text(
-        Method::POST,
-        "/v2/account/articles/6/unpublish",
-        StatusCode::NO_CONTENT,
-        "",
-    );
-    server.enqueue_json(
-        Method::GET,
-        "/v2/account/articles/6",
-        StatusCode::OK,
-        private_article_json(&server, 6, true),
-    );
-    server.enqueue_json(
-        Method::GET,
-        "/v2/account/articles/6",
-        StatusCode::OK,
-        private_article_json(&server, 6, false),
-    );
-
     let public = client
         .publish_article(ArticleId(6))
         .await
         .expect("publish article");
     assert!(public.is_public_article());
-
-    let private = client
-        .unpublish_article(ArticleId(6), "CI cleanup after smoke publication")
-        .await
-        .expect("unpublish article");
-    assert!(!private.is_public_article());
-
-    let requests = server.requests();
-    let body: serde_json::Value = serde_json::from_slice(&requests[3].body).unwrap();
-    assert_eq!(body["reason"], "CI cleanup after smoke publication");
-    assert_eq!(
-        requests[3].headers.get("authorization").map(String::as_str),
-        Some("token test-token")
-    );
 }
 
 #[tokio::test]

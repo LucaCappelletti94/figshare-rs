@@ -22,7 +22,6 @@ use tokio::time::{sleep, Duration, Instant};
 const SEARCH_WAIT: Duration = Duration::from_secs(20);
 const UPLOAD_WAIT: Duration = Duration::from_secs(30);
 const POLL_DELAY: Duration = Duration::from_secs(2);
-const UNPUBLISH_REASON: &str = "CI cleanup after live smoke publication";
 
 fn unique_suffix() -> u128 {
     SystemTime::now()
@@ -69,20 +68,6 @@ fn part_bytes(bytes: &[u8], part: &UploadPart) -> Vec<u8> {
     bytes[start..end].to_vec()
 }
 
-fn is_permission_cleanup_error(error: &FigshareError) -> bool {
-    matches!(
-        error,
-        FigshareError::Http {
-            status,
-            message,
-            ..
-        } if *status == StatusCode::FORBIDDEN
-            && message
-                .as_deref()
-                .is_some_and(|message| message.contains("Insufficient permissions"))
-    )
-}
-
 async fn cleanup_article(
     client: &FigshareClient,
     article_id: ArticleId,
@@ -92,19 +77,19 @@ async fn cleanup_article(
         Err(FigshareError::Http { status, .. }) if status == StatusCode::NOT_FOUND => {
             return Ok(());
         }
-        Err(error) => return Err(Box::new(error)),
+        Err(error) => return Err(Box::new(error) as Box<dyn Error>),
     };
 
     if article.is_public_article() {
-        match client.unpublish_article(article_id, UNPUBLISH_REASON).await {
-            Ok(_) => {}
-            Err(error) if is_permission_cleanup_error(&error) => {
+        match client.delete_article(article_id).await {
+            Ok(()) => return Ok(()),
+            Err(FigshareError::Http { .. }) => {
                 eprintln!(
-                    "warning: could not unpublish live smoke article {article_id} during cleanup: {error}"
+                    "warning: could not delete published live smoke article {article_id} during cleanup; leaving it in place"
                 );
                 return Ok(());
             }
-            Err(error) => return Err(Box::new(error)),
+            Err(error) => return Err(Box::new(error) as Box<dyn Error>),
         }
     }
 
@@ -117,13 +102,7 @@ async fn cleanup_article(
     match client.delete_article(article_id).await {
         Ok(()) => Ok(()),
         Err(FigshareError::Http { status, .. }) if status == StatusCode::NOT_FOUND => Ok(()),
-        Err(error) if is_permission_cleanup_error(&error) => {
-            eprintln!(
-                "warning: could not delete live smoke article {article_id} during cleanup: {error}"
-            );
-            Ok(())
-        }
-        Err(error) => Err(Box::new(error)),
+        Err(error) => Err(Box::new(error) as Box<dyn Error>),
     }
 }
 
@@ -225,7 +204,7 @@ async fn required_live_category_id(client: &FigshareClient) -> Result<CategoryId
                         .as_deref()
                         .is_some_and(|message| message.contains("Not allowed to set category")) => {
                 }
-                Err(error) => return Err(Box::new(error)),
+                Err(error) => return Err(Box::new(error) as Box<dyn Error>),
             }
         }
 
@@ -448,12 +427,10 @@ async fn authenticated_account_surface_round_trip() {
             );
         }
 
-        let unpublished = client
-            .unpublish_article(article_id, UNPUBLISH_REASON)
-            .await?;
+        let own_after_publish = client.get_own_article(article_id).await?;
         assert!(
-            !unpublished.is_public_article(),
-            "unpublish_article should restore a private draft"
+            own_after_publish.is_public_article(),
+            "private article view should reflect publication"
         );
 
         Ok::<(), Box<dyn Error>>(())
