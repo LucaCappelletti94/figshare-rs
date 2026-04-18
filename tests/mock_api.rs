@@ -251,6 +251,15 @@ async fn private_article_methods_follow_location_and_send_auth_header() {
         StatusCode::OK,
         json!({ "doi": "10.6084/m9.figshare.5" }),
     );
+    server.enqueue_json(
+        Method::GET,
+        "/v2/account/categories",
+        StatusCode::OK,
+        json!([{
+            "id": 3,
+            "title": "Allowed category"
+        }]),
+    );
     server.enqueue_text(
         Method::DELETE,
         "/v2/account/articles/5",
@@ -269,6 +278,11 @@ async fn private_article_methods_follow_location_and_send_auth_header() {
         .expect("update article");
     let doi = client.reserve_doi(ArticleId(5)).await.expect("reserve doi");
     assert_eq!(doi.as_str(), "10.6084/m9.figshare.5");
+    let categories = client
+        .list_account_categories()
+        .await
+        .expect("list account categories");
+    assert_eq!(categories[0].id, figshare_rs::CategoryId(3));
     client
         .delete_article(ArticleId(5))
         .await

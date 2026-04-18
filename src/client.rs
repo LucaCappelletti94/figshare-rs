@@ -494,6 +494,17 @@ impl FigshareClient {
             .await
     }
 
+    /// Lists categories available to the authenticated account.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if authentication is missing, if the request fails, or
+    /// if Figshare returns a non-success response.
+    pub async fn list_account_categories(&self) -> Result<Vec<ArticleCategory>, FigshareError> {
+        self.execute_json(self.request(Method::GET, "account/categories", true)?)
+            .await
+    }
+
     /// Lists public articles.
     ///
     /// # Errors

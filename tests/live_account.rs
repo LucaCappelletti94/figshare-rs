@@ -150,12 +150,12 @@ async fn wait_for_own_search_hit(
 
 async fn required_live_category_id(client: &FigshareClient) -> Result<CategoryId, Box<dyn Error>> {
     client
-        .list_categories()
+        .list_account_categories()
         .await?
         .into_iter()
         .next()
         .map(|category| category.id)
-        .ok_or_else(|| "Figshare returned no public categories".into())
+        .ok_or_else(|| "Figshare returned no account-scoped categories".into())
 }
 
 #[tokio::test]
