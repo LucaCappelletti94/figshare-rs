@@ -1,0 +1,59 @@
+name: Live Daily
+
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      run_authenticated:
+        description: Run the authenticated draft-only smoke test
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: figshare-live-daily
+  cancel-in-progress: false
+
+jobs:
+  live-public:
+    name: Public API Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run public live smoke suite
+        run: cargo test --test live_public --all-features --locked -- --ignored --nocapture --test-threads=1
+
+  live-account:
+    name: Authenticated API Smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_authenticated && secrets.FIGSHARE_TOKEN != '' }}
+    env:
+      FIGSHARE_TOKEN: ${{ secrets.FIGSHARE_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run authenticated live smoke suite
+        run: cargo test --test live_account --all-features --locked -- --ignored --nocapture --test-threads=1
