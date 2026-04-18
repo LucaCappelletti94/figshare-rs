@@ -10,8 +10,8 @@ use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use figshare_rs::{
-    ArticleId, ArticleMetadata, ArticleQuery, DefinedType, FigshareClient, FigshareError,
-    FileReplacePolicy, UploadPart, UploadSpec, UploadStatus,
+    ArticleId, ArticleMetadata, ArticleQuery, CategoryId, DefinedType, FigshareClient,
+    FigshareError, FileReplacePolicy, UploadPart, UploadSpec, UploadStatus,
 };
 use futures_util::StreamExt;
 use md5::{Digest, Md5};
@@ -35,12 +35,14 @@ fn live_metadata(
     title: impl Into<String>,
     description: impl Into<String>,
     tag: impl Into<String>,
+    category_id: CategoryId,
 ) -> Result<ArticleMetadata, figshare_rs::ArticleMetadataBuildError> {
     ArticleMetadata::builder()
         .title(title)
         .defined_type(DefinedType::Dataset)
         .description(description)
         .author_named("figshare-rs CI")
+        .category_id(category_id)
         .tag("figshare-rs")
         .tag(tag)
         .build()
@@ -146,6 +148,16 @@ async fn wait_for_own_search_hit(
     }
 }
 
+async fn required_live_category_id(client: &FigshareClient) -> Result<CategoryId, Box<dyn Error>> {
+    client
+        .list_categories()
+        .await?
+        .into_iter()
+        .next()
+        .map(|category| category.id)
+        .ok_or_else(|| "Figshare returned no public categories".into())
+}
+
 #[tokio::test]
 #[ignore = "requires FIGSHARE_TOKEN and network access; mutates authenticated account state"]
 async fn authenticated_account_surface_round_trip() {
@@ -157,11 +169,15 @@ async fn authenticated_account_surface_round_trip() {
     std::fs::write(&payload_path, payload).expect("write payload");
 
     let suffix = unique_suffix();
+    let category_id = required_live_category_id(&client)
+        .await
+        .expect("resolve a publishable category");
     let initial_title = format!("figshare-rs draft smoke {suffix}");
     let initial_metadata = live_metadata(
         initial_title.clone(),
         "Draft-to-public live smoke test for figshare-rs",
         format!("draft-run-{suffix}"),
+        category_id,
     )
     .expect("metadata");
 
@@ -170,6 +186,19 @@ async fn authenticated_account_surface_round_trip() {
         .await
         .expect("create article");
     let article_id = article.id;
+    let link_article = client
+        .create_article(
+            &live_metadata(
+                format!("figshare-rs link smoke {}", suffix + 1),
+                "Dedicated linked-file live smoke test for figshare-rs",
+                format!("link-run-{}", suffix + 1),
+                category_id,
+            )
+            .expect("link metadata"),
+        )
+        .await
+        .expect("create link article");
+    let link_article_id = link_article.id;
 
     let result = async {
         let own_articles = client
@@ -194,6 +223,7 @@ async fn authenticated_account_surface_round_trip() {
             updated_title.clone(),
             "Updated live smoke test for figshare-rs",
             format!("draft-run-{suffix}"),
+            category_id,
         )?;
         let updated = client.update_article(article_id, &updated_metadata).await?;
         assert_eq!(
@@ -207,8 +237,13 @@ async fn authenticated_account_surface_round_trip() {
         );
 
         let link_file = client
-            .initiate_link_file(article_id, "https://figshare.com/")
+            .initiate_link_file(link_article_id, "https://figshare.com/")
             .await?;
+        let link_files = client.list_files(link_article_id).await?;
+        assert!(
+            link_files.iter().any(|file| file.id == link_file.id),
+            "link-only file should be listed on the dedicated link draft"
+        );
 
         let uploaded = client.upload_path(article_id, &payload_path).await?;
         assert_eq!(uploaded.name, "payload.txt");
@@ -235,10 +270,6 @@ async fn authenticated_account_surface_round_trip() {
             files.iter().any(|file| file.id == uploaded_reader.id),
             "reader upload should be listed on the draft article"
         );
-        assert!(
-            files.iter().any(|file| file.id == link_file.id),
-            "link-only file should be listed on the draft article"
-        );
 
         let mut opened = client
             .open_own_article_file_by_name(article_id, "reader.txt")
@@ -260,8 +291,8 @@ async fn authenticated_account_surface_round_trip() {
         assert!(resolved.bytes_written > 0, "download should write bytes");
         assert_eq!(std::fs::read(&downloaded)?, payload);
 
-        client.delete_file(article_id, link_file.id).await?;
-        let files = client.list_files(article_id).await?;
+        client.delete_file(link_article_id, link_file.id).await?;
+        let files = client.list_files(link_article_id).await?;
         assert!(
             files.iter().all(|file| file.id != link_file.id),
             "deleted link-only file should no longer be listed"
@@ -344,10 +375,12 @@ async fn authenticated_account_surface_round_trip() {
     }
     .await;
 
-    let cleanup = cleanup_article(&client, article_id).await;
+    let cleanup = cleanup_articles(&client, &[article_id, link_article_id]).await;
 
     if let Err(error) = cleanup {
-        panic!("failed to clean up live smoke article {article_id}: {error}");
+        panic!(
+            "failed to clean up live smoke articles {article_id} and {link_article_id}: {error}"
+        );
     }
     if let Err(error) = result {
         panic!("authenticated account surface workflow failed: {error}");
@@ -359,6 +392,9 @@ async fn authenticated_account_surface_round_trip() {
 async fn authenticated_publish_workflow_helpers_round_trip() {
     let client = FigshareClient::from_env().expect("build authenticated client");
     let suffix = unique_suffix();
+    let category_id = required_live_category_id(&client)
+        .await
+        .expect("resolve a publishable category");
     let mut cleanup_ids = Vec::new();
 
     let result = async {
@@ -367,6 +403,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
                 format!("figshare-rs reconcile smoke {suffix}"),
                 "Direct reconcile_files live smoke test",
                 format!("workflow-direct-{suffix}"),
+                category_id,
             )?)
             .await?;
         cleanup_ids.push(direct_article.id);
@@ -396,6 +433,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
                     format!("figshare-rs publish-existing smoke {suffix}"),
                     "publish_existing_article_with_policy live smoke test",
                     format!("workflow-update-{suffix}"),
+                    category_id,
                 )?,
                 FileReplacePolicy::UpsertByFilename,
                 vec![UploadSpec::from_reader(
@@ -424,6 +462,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
                     format!("figshare-rs create-publish smoke {}", suffix + 1),
                     "create_and_publish_article live smoke test",
                     format!("workflow-create-{}", suffix + 1),
+                    category_id,
                 )?,
                 vec![UploadSpec::from_reader(
                     "created.txt",
