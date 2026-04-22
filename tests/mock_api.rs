@@ -12,6 +12,7 @@ mod mock_support;
 use std::io::Cursor;
 
 use axum::http::{Method, StatusCode};
+use figshare_rs::client_uploader_traits::prelude::*;
 use figshare_rs::{
     ArticleId, ArticleMetadata, ArticleOrder, ArticleQuery, DefinedType, Doi, FigshareError,
     FileReplacePolicy, UploadSpec,
@@ -155,7 +156,7 @@ async fn public_article_methods_use_expected_routes_and_payloads() {
     assert_eq!(listed[0].id, ArticleId(1));
 
     let searched = client
-        .search_public_articles(
+        .search_public_resources(
             &ArticleQuery::builder()
                 .item_type(DefinedType::Dataset)
                 .limit(10)
@@ -166,7 +167,7 @@ async fn public_article_methods_use_expected_routes_and_payloads() {
     assert_eq!(searched[0].id, ArticleId(2));
 
     let latest = client
-        .resolve_latest_public_article(ArticleId(2))
+        .resolve_latest_public_resource(&ArticleId(2))
         .await
         .expect("latest article");
     assert_eq!(latest.version_number(), Some(3));
@@ -203,7 +204,7 @@ async fn doi_lookup_uses_exact_public_search() {
 
     let doi = Doi::new("10.6084/m9.figshare.11").unwrap();
     let article = client
-        .get_public_article_by_doi(&doi)
+        .get_public_resource_by_doi(&doi)
         .await
         .expect("article by doi");
     assert_eq!(article.id, ArticleId(11));
@@ -268,12 +269,12 @@ async fn private_article_methods_follow_location_and_send_auth_header() {
     );
 
     let article = client
-        .create_article(&article_metadata())
+        .create_draft(&article_metadata())
         .await
         .expect("create article");
     assert_eq!(article.id, ArticleId(5));
     client
-        .update_article(ArticleId(5), &article_metadata())
+        .update_draft_metadata(&ArticleId(5), &article_metadata())
         .await
         .expect("update article");
     let doi = client.reserve_doi(ArticleId(5)).await.expect("reserve doi");
@@ -322,7 +323,7 @@ async fn publish_waits_for_visibility_changes() {
         public_article_json(&server, 6, 1),
     );
     let public = client
-        .publish_article(ArticleId(6))
+        .publish_draft(&ArticleId(6))
         .await
         .expect("publish article");
     assert!(public.is_public_article());
@@ -787,12 +788,12 @@ async fn workflow_helpers_cover_reconcile_and_publish() {
     );
 
     let published = client
-        .publish_existing_article_with_policy(
+        .update_publication(UpdatePublicationRequest::new(
             ArticleId(20),
-            &article_metadata(),
+            article_metadata(),
             FileReplacePolicy::ReplaceAll,
             vec![UploadSpec::from_path(&path).unwrap()],
-        )
+        ))
         .await
         .expect("publish workflow");
     assert!(published.article.is_public_article());
@@ -824,7 +825,7 @@ async fn reconcile_files_rejects_conflicts_for_keep_existing_policy() {
     );
 
     let error = client
-        .reconcile_files(
+        .reconcile_draft_files(
             &article,
             FileReplacePolicy::KeepExistingAndAdd,
             vec![UploadSpec::from_reader(
@@ -908,7 +909,7 @@ async fn reconcile_files_does_not_delete_existing_files_before_successful_replac
     );
 
     let error = client
-        .reconcile_files(
+        .reconcile_draft_files(
             &article,
             FileReplacePolicy::ReplaceAll,
             vec![UploadSpec::from_path(&path).unwrap()],
@@ -998,10 +999,10 @@ async fn create_and_publish_article_deletes_new_draft_after_upload_failure() {
     );
 
     let error = client
-        .create_and_publish_article(
-            &article_metadata(),
+        .create_publication(CreatePublicationRequest::untargeted(
+            article_metadata(),
             vec![UploadSpec::from_path(&path).unwrap()],
-        )
+        ))
         .await
         .expect_err("upload failure expected");
     assert!(matches!(error, FigshareError::Http { .. }));

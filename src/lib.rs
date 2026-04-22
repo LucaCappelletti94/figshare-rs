@@ -25,6 +25,7 @@
 )]
 
 pub mod client;
+pub use client_uploader_traits;
 pub mod downloads;
 pub mod endpoint;
 pub mod error;
@@ -35,6 +36,7 @@ pub mod poll;
 pub mod query;
 mod serde_util;
 pub mod upload;
+mod uploader_traits;
 pub mod workflow;
 pub use client::{Auth, FigshareClient, FigshareClientBuilder};
 pub use downloads::{DownloadStream, ResolvedDownload};

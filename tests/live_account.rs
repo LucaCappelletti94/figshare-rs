@@ -9,6 +9,7 @@ use std::error::Error;
 use std::io::Cursor;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use figshare_rs::client_uploader_traits::prelude::*;
 use figshare_rs::{
     ArticleId, ArticleMetadata, ArticleQuery, CategoryId, DefinedType, FigshareClient,
     FigshareError, FileReplacePolicy, UploadPart, UploadSpec, UploadStatus,
@@ -167,7 +168,7 @@ async fn required_live_category_id(client: &FigshareClient) -> Result<CategoryId
     let suffix = unique_suffix();
     let probe_title = format!("figshare-rs category probe {suffix}");
     let probe_article = client
-        .create_article(&live_metadata(
+        .create_draft(&live_metadata(
             probe_title.clone(),
             "Temporary category probe draft for figshare-rs live smoke tests",
             format!("category-probe-{suffix}"),
@@ -191,7 +192,7 @@ async fn required_live_category_id(client: &FigshareClient) -> Result<CategoryId
                 category.id,
             )?;
 
-            match client.update_article(probe_id, &metadata).await {
+            match client.update_draft_metadata(&probe_id, &metadata).await {
                 Ok(_) => return Ok(category.id),
                 Err(FigshareError::Http {
                     status,
@@ -247,12 +248,12 @@ async fn authenticated_account_surface_round_trip() {
     .expect("metadata");
 
     let article = client
-        .create_article(&initial_metadata)
+        .create_draft(&initial_metadata)
         .await
         .expect("create article");
     let article_id = article.id;
     let link_article = client
-        .create_article(
+        .create_draft(
             &live_metadata(
                 format!("figshare-rs link smoke {}", suffix + 1),
                 "Dedicated linked-file live smoke test for figshare-rs",
@@ -289,7 +290,9 @@ async fn authenticated_account_surface_round_trip() {
             format!("draft-run-{suffix}"),
             category_id,
         )?;
-        let updated = client.update_article(article_id, &updated_metadata).await?;
+        let updated = client
+            .update_draft_metadata(&article_id, &updated_metadata)
+            .await?;
         assert_eq!(
             updated.title, updated_title,
             "update_article should persist"
@@ -413,7 +416,7 @@ async fn authenticated_account_surface_round_trip() {
         let fetched_manual = client.get_file(article_id, manual_file.id).await?;
         assert_eq!(fetched_manual.name, "manual.txt");
 
-        let published = client.publish_article(article_id).await?;
+        let published = client.publish_draft(&article_id).await?;
         assert!(
             published.is_public_article(),
             "publish_article should publish"
@@ -461,7 +464,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
 
     let result = async {
         let direct_article = client
-            .create_article(&live_metadata(
+            .create_draft(&live_metadata(
                 format!("figshare-rs reconcile smoke {suffix}"),
                 "Direct reconcile_files live smoke test",
                 format!("workflow-direct-{suffix}"),
@@ -470,7 +473,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
         cleanup_ids.push(direct_article.id);
 
         let reconciled_files = client
-            .reconcile_files(
+            .reconcile_draft_files(
                 &direct_article,
                 FileReplacePolicy::KeepExistingAndAdd,
                 vec![UploadSpec::from_reader(
@@ -488,9 +491,9 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
         );
 
         let published_existing = client
-            .publish_existing_article_with_policy(
+            .update_publication(UpdatePublicationRequest::new(
                 direct_article.id,
-                &live_metadata_with_category(
+                live_metadata_with_category(
                     format!("figshare-rs publish-existing smoke {suffix}"),
                     "publish_existing_article_with_policy live smoke test",
                     format!("workflow-update-{suffix}"),
@@ -502,7 +505,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
                     Cursor::new(b"second workflow payload".to_vec()),
                     23,
                 )],
-            )
+            ))
             .await?;
         assert!(
             published_existing.article.is_public_article(),
@@ -518,8 +521,8 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
         );
 
         let created = client
-            .create_and_publish_article(
-                &live_metadata_with_category(
+            .create_publication(CreatePublicationRequest::untargeted(
+                live_metadata_with_category(
                     format!("figshare-rs create-publish smoke {}", suffix + 1),
                     "create_and_publish_article live smoke test",
                     format!("workflow-create-{}", suffix + 1),
@@ -530,7 +533,7 @@ async fn authenticated_publish_workflow_helpers_round_trip() {
                     Cursor::new(b"create and publish payload".to_vec()),
                     26,
                 )],
-            )
+            ))
             .await?;
         cleanup_ids.push(created.article.id);
         assert!(

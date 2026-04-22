@@ -26,18 +26,14 @@ impl FigshareClient {
     /// Returns an error if authentication is missing, if an upload conflicts
     /// with the selected policy, if the request fails, or if Figshare returns a
     /// non-success response.
-    pub async fn reconcile_files(
+    pub(crate) async fn reconcile_files(
         &self,
         article: &Article,
         policy: FileReplacePolicy,
         uploads: Vec<UploadSpec>,
     ) -> Result<Vec<ArticleFile>, FigshareError> {
-        ensure_unique_filenames(&uploads)?;
+        let upload_filenames = validate_upload_filenames(&uploads)?;
         let existing = self.list_files(article.id).await?;
-        let upload_filenames: BTreeSet<_> = uploads
-            .iter()
-            .map(|upload| upload.filename.clone())
-            .collect();
 
         match policy {
             FileReplacePolicy::KeepExistingAndAdd => {
@@ -104,7 +100,7 @@ impl FigshareClient {
     ///
     /// Returns an error if authentication is missing, if uploading or
     /// publication fails, or if Figshare returns a non-success response.
-    pub async fn create_and_publish_article(
+    pub(crate) async fn create_and_publish_article(
         &self,
         metadata: &ArticleMetadata,
         uploads: Vec<UploadSpec>,
@@ -140,7 +136,7 @@ impl FigshareClient {
     ///
     /// Returns an error if authentication is missing, if the request fails, or
     /// if Figshare returns a non-success response.
-    pub async fn publish_existing_article_with_policy(
+    pub(crate) async fn publish_existing_article_with_policy(
         &self,
         article_id: ArticleId,
         metadata: &ArticleMetadata,
@@ -167,22 +163,14 @@ impl FigshareClient {
     }
 }
 
-fn ensure_unique_filenames(uploads: &[UploadSpec]) -> Result<(), FigshareError> {
-    let mut seen = BTreeSet::new();
-    for upload in uploads {
-        if !seen.insert(upload.filename.clone()) {
-            return Err(FigshareError::DuplicateUploadFilename {
-                filename: upload.filename.clone(),
-            });
-        }
-    }
-    Ok(())
+fn validate_upload_filenames(uploads: &[UploadSpec]) -> Result<BTreeSet<String>, FigshareError> {
+    client_uploader_traits::collect_upload_filenames(uploads.iter()).map_err(FigshareError::from)
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ensure_unique_filenames;
-    use crate::upload::UploadSpec;
+    use super::validate_upload_filenames;
+    use crate::{upload::UploadSpec, FigshareError};
 
     #[test]
     fn duplicate_filenames_are_rejected() {
@@ -190,6 +178,23 @@ mod tests {
             UploadSpec::from_reader("artifact.bin", std::io::Cursor::new(vec![1]), 1),
             UploadSpec::from_reader("artifact.bin", std::io::Cursor::new(vec![2]), 1),
         ];
-        assert!(ensure_unique_filenames(&uploads).is_err());
+        assert!(matches!(
+            validate_upload_filenames(&uploads),
+            Err(FigshareError::DuplicateUploadFilename { .. })
+        ));
+    }
+
+    #[test]
+    fn empty_filenames_are_rejected() {
+        let uploads = vec![UploadSpec::from_reader(
+            "",
+            std::io::Cursor::new(vec![1]),
+            1,
+        )];
+
+        assert!(matches!(
+            validate_upload_filenames(&uploads),
+            Err(FigshareError::InvalidState(message)) if message == "upload filename cannot be empty"
+        ));
     }
 }

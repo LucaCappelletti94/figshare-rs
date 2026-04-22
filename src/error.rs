@@ -137,6 +137,19 @@ impl FigshareError {
     }
 }
 
+impl From<client_uploader_traits::UploadNameValidationError> for FigshareError {
+    fn from(error: client_uploader_traits::UploadNameValidationError) -> Self {
+        match error {
+            client_uploader_traits::UploadNameValidationError::EmptyFilename => {
+                Self::InvalidState("upload filename cannot be empty".into())
+            }
+            client_uploader_traits::UploadNameValidationError::DuplicateFilename { filename } => {
+                Self::DuplicateUploadFilename { filename }
+            }
+        }
+    }
+}
+
 pub(crate) fn decode_http_error(
     status: StatusCode,
     content_type: Option<&str>,

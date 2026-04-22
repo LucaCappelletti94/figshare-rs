@@ -5,6 +5,7 @@
     clippy::unwrap_used
 )]
 
+use figshare_rs::client_uploader_traits::prelude::*;
 use figshare_rs::{Article, ArticleFile, ArticleQuery, DefinedType, Doi, FigshareClient};
 use futures_util::StreamExt;
 use tempfile::tempdir;
@@ -35,7 +36,7 @@ async fn select_public_download_target(client: &FigshareClient) -> PublicDownloa
     );
 
     let searched = client
-        .search_public_articles(
+        .search_public_resources(
             &ArticleQuery::builder()
                 .item_type(DefinedType::Dataset)
                 .limit(25)
@@ -55,7 +56,7 @@ async fn select_public_download_target(client: &FigshareClient) -> PublicDownloa
         }
 
         let fetched = client
-            .get_public_article(article.id)
+            .get_public_resource(&article.id)
             .await
             .expect("get public article");
         let versions = client
@@ -66,7 +67,7 @@ async fn select_public_download_target(client: &FigshareClient) -> PublicDownloa
             continue;
         };
         let latest = client
-            .resolve_latest_public_article(article.id)
+            .resolve_latest_public_resource(&article.id)
             .await
             .expect("resolve latest public article");
         let version_article = client
@@ -141,7 +142,7 @@ async fn daily_public_api_surface() {
     );
 
     let by_doi = client
-        .get_public_article_by_doi(&target.doi)
+        .get_public_resource_by_doi(&target.doi)
         .await
         .expect("resolve public article by doi");
     assert_eq!(
@@ -150,7 +151,7 @@ async fn daily_public_api_surface() {
     );
 
     let latest_by_doi = client
-        .resolve_latest_public_article_by_doi(&target.doi)
+        .resolve_latest_public_resource_by_doi(&target.doi)
         .await
         .expect("resolve latest public article by doi");
     assert_eq!(

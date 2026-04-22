@@ -526,7 +526,7 @@ impl FigshareClient {
     ///
     /// Returns an error if the query is invalid, if the request fails, or if
     /// Figshare returns a non-success response.
-    pub async fn search_public_articles(
+    pub(crate) async fn search_public_articles(
         &self,
         query: &ArticleQuery,
     ) -> Result<Vec<Article>, FigshareError> {
@@ -544,7 +544,7 @@ impl FigshareClient {
     ///
     /// Returns an error if the request fails or Figshare returns a non-success
     /// response.
-    pub async fn get_public_article(&self, id: ArticleId) -> Result<Article, FigshareError> {
+    pub(crate) async fn get_public_article(&self, id: ArticleId) -> Result<Article, FigshareError> {
         self.execute_json(self.request(Method::GET, &format!("articles/{id}"), false)?)
             .await
     }
@@ -588,7 +588,10 @@ impl FigshareClient {
     ///
     /// Returns an error if the request fails, Figshare returns a non-success
     /// response, or no exact DOI match is found.
-    pub async fn get_public_article_by_doi(&self, doi: &Doi) -> Result<Article, FigshareError> {
+    pub(crate) async fn get_public_article_by_doi(
+        &self,
+        doi: &Doi,
+    ) -> Result<Article, FigshareError> {
         let hits = self
             .list_public_articles(&ArticleQuery::builder().doi(doi.as_str()).limit(10).build())
             .await?;
@@ -608,7 +611,7 @@ impl FigshareClient {
     ///
     /// Returns an error if the request fails or Figshare returns a non-success
     /// response.
-    pub async fn resolve_latest_public_article(
+    pub(crate) async fn resolve_latest_public_article(
         &self,
         id: ArticleId,
     ) -> Result<Article, FigshareError> {
@@ -630,7 +633,7 @@ impl FigshareClient {
     /// # Errors
     ///
     /// Returns an error if the request fails or no matching article exists.
-    pub async fn resolve_latest_public_article_by_doi(
+    pub(crate) async fn resolve_latest_public_article_by_doi(
         &self,
         doi: &Doi,
     ) -> Result<Article, FigshareError> {
@@ -691,7 +694,7 @@ impl FigshareClient {
     ///
     /// Returns an error if authentication is missing, if the request fails, or
     /// if Figshare returns a non-success response.
-    pub async fn create_article(
+    pub(crate) async fn create_article(
         &self,
         metadata: &ArticleMetadata,
     ) -> Result<Article, FigshareError> {
@@ -710,7 +713,7 @@ impl FigshareClient {
     ///
     /// Returns an error if authentication is missing, if the request fails, or
     /// if Figshare returns a non-success response.
-    pub async fn update_article(
+    pub(crate) async fn update_article(
         &self,
         id: ArticleId,
         metadata: &ArticleMetadata,
@@ -762,7 +765,7 @@ impl FigshareClient {
     ///
     /// Returns an error if authentication is missing, if the request fails, or
     /// if Figshare returns a non-success response.
-    pub async fn publish_article(&self, id: ArticleId) -> Result<Article, FigshareError> {
+    pub(crate) async fn publish_article(&self, id: ArticleId) -> Result<Article, FigshareError> {
         let location = self
             .execute_location(self.request(
                 Method::POST,
