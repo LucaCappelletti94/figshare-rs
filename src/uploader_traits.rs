@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::path::Path;
 use std::time::Duration;
 
@@ -178,12 +177,11 @@ impl ReadPublicResource for FigshareClient {
     type ResourceId = ArticleId;
     type Resource = Article;
 
-    fn get_public_resource(
+    async fn get_public_resource(
         &self,
         id: &Self::ResourceId,
-    ) -> impl Future<Output = Result<Self::Resource, Self::Error>> {
-        let id = *id;
-        async move { self.get_public_article(id).await }
+    ) -> Result<Self::Resource, Self::Error> {
+        self.get_public_article(*id).await
     }
 }
 
@@ -191,11 +189,11 @@ impl SearchPublicResources for FigshareClient {
     type Query = ArticleQuery;
     type SearchResults = Vec<Article>;
 
-    fn search_public_resources(
+    async fn search_public_resources(
         &self,
         query: &Self::Query,
-    ) -> impl Future<Output = Result<Self::SearchResults, Self::Error>> {
-        async move { self.search_public_articles(query).await }
+    ) -> Result<Self::SearchResults, Self::Error> {
+        self.search_public_articles(query).await
     }
 }
 
@@ -203,17 +201,14 @@ impl ListResourceFiles for FigshareClient {
     type ResourceId = ArticleId;
     type File = ArticleFile;
 
-    fn list_resource_files(
+    async fn list_resource_files(
         &self,
         id: &Self::ResourceId,
-    ) -> impl Future<Output = Result<Vec<Self::File>, Self::Error>> {
-        let id = *id;
-        async move {
-            let article = self.get_public_article(id).await?;
-            let version = public_article_version_number(self, &article).await?;
-            self.list_public_article_version_files(article.id, version)
-                .await
-        }
+    ) -> Result<Vec<Self::File>, Self::Error> {
+        let article = self.get_public_article(*id).await?;
+        let version = public_article_version_number(self, &article).await?;
+        self.list_public_article_version_files(article.id, version)
+            .await
     }
 }
 
@@ -221,17 +216,14 @@ impl DownloadNamedPublicFile for FigshareClient {
     type ResourceId = ArticleId;
     type Download = ResolvedDownload;
 
-    fn download_named_public_file_to_path(
+    async fn download_named_public_file_to_path(
         &self,
         id: &Self::ResourceId,
         name: &str,
         path: &Path,
-    ) -> impl Future<Output = Result<Self::Download, Self::Error>> {
-        let id = *id;
-        async move {
-            self.download_public_article_file_by_name_to_path(id, name, false, path)
-                .await
-        }
+    ) -> Result<Self::Download, Self::Error> {
+        self.download_public_article_file_by_name_to_path(*id, name, false, path)
+            .await
     }
 }
 
@@ -241,18 +233,16 @@ impl CreatePublication for FigshareClient {
     type Upload = UploadSpec;
     type Output = PublishedArticle;
 
-    fn create_publication(
+    async fn create_publication(
         &self,
         request: CreatePublicationRequest<Self::CreateTarget, Self::Metadata, Self::Upload>,
-    ) -> impl Future<Output = Result<Self::Output, Self::Error>> {
-        async move {
-            let CreatePublicationRequest {
-                target: _,
-                metadata,
-                uploads,
-            } = request;
-            self.create_and_publish_article(&metadata, uploads).await
-        }
+    ) -> Result<Self::Output, Self::Error> {
+        let CreatePublicationRequest {
+            target: _,
+            metadata,
+            uploads,
+        } = request;
+        self.create_and_publish_article(&metadata, uploads).await
     }
 }
 
@@ -263,7 +253,7 @@ impl UpdatePublication for FigshareClient {
     type Upload = UploadSpec;
     type Output = PublishedArticle;
 
-    fn update_publication(
+    async fn update_publication(
         &self,
         request: UpdatePublicationRequest<
             Self::ResourceId,
@@ -271,17 +261,15 @@ impl UpdatePublication for FigshareClient {
             Self::FilePolicy,
             Self::Upload,
         >,
-    ) -> impl Future<Output = Result<Self::Output, Self::Error>> {
-        async move {
-            let UpdatePublicationRequest {
-                resource_id,
-                metadata,
-                policy,
-                uploads,
-            } = request;
-            self.publish_existing_article_with_policy(resource_id, &metadata, policy, uploads)
-                .await
-        }
+    ) -> Result<Self::Output, Self::Error> {
+        let UpdatePublicationRequest {
+            resource_id,
+            metadata,
+            policy,
+            uploads,
+        } = request;
+        self.publish_existing_article_with_policy(resource_id, &metadata, policy, uploads)
+            .await
     }
 }
 
@@ -289,11 +277,11 @@ impl LookupByDoi for FigshareClient {
     type Doi = Doi;
     type Resource = Article;
 
-    fn get_public_resource_by_doi(
+    async fn get_public_resource_by_doi(
         &self,
         doi: &Self::Doi,
-    ) -> impl Future<Output = Result<Self::Resource, Self::Error>> {
-        async move { self.get_public_article_by_doi(doi).await }
+    ) -> Result<Self::Resource, Self::Error> {
+        self.get_public_article_by_doi(doi).await
     }
 }
 
@@ -301,12 +289,11 @@ impl ResolveLatestPublicResource for FigshareClient {
     type ResourceId = ArticleId;
     type Resource = Article;
 
-    fn resolve_latest_public_resource(
+    async fn resolve_latest_public_resource(
         &self,
         id: &Self::ResourceId,
-    ) -> impl Future<Output = Result<Self::Resource, Self::Error>> {
-        let id = *id;
-        async move { self.resolve_latest_public_article(id).await }
+    ) -> Result<Self::Resource, Self::Error> {
+        self.resolve_latest_public_article(*id).await
     }
 }
 
@@ -314,11 +301,11 @@ impl ResolveLatestPublicResourceByDoi for FigshareClient {
     type Doi = Doi;
     type Resource = Article;
 
-    fn resolve_latest_public_resource_by_doi(
+    async fn resolve_latest_public_resource_by_doi(
         &self,
         doi: &Self::Doi,
-    ) -> impl Future<Output = Result<Self::Resource, Self::Error>> {
-        async move { self.resolve_latest_public_article_by_doi(doi).await }
+    ) -> Result<Self::Resource, Self::Error> {
+        self.resolve_latest_public_article_by_doi(doi).await
     }
 }
 
@@ -330,37 +317,32 @@ impl DraftWorkflow for FigshareClient {
     type UploadResult = ArticleFile;
     type Published = Article;
 
-    fn create_draft(
-        &self,
-        metadata: &Self::Metadata,
-    ) -> impl Future<Output = Result<Self::Draft, Self::Error>> {
-        async move { self.create_article(metadata).await }
+    async fn create_draft(&self, metadata: &Self::Metadata) -> Result<Self::Draft, Self::Error> {
+        self.create_article(metadata).await
     }
 
-    fn update_draft_metadata(
+    async fn update_draft_metadata(
         &self,
         draft_id: &<Self::Draft as DraftResource>::Id,
         metadata: &Self::Metadata,
-    ) -> impl Future<Output = Result<Self::Draft, Self::Error>> {
-        let draft_id = *draft_id;
-        async move { self.update_article(draft_id, metadata).await }
+    ) -> Result<Self::Draft, Self::Error> {
+        self.update_article(*draft_id, metadata).await
     }
 
-    fn reconcile_draft_files(
+    async fn reconcile_draft_files(
         &self,
         draft: &Self::Draft,
         policy: Self::FilePolicy,
         uploads: Vec<Self::Upload>,
-    ) -> impl Future<Output = Result<Vec<Self::UploadResult>, Self::Error>> {
-        async move { self.reconcile_files(draft, policy, uploads).await }
+    ) -> Result<Vec<Self::UploadResult>, Self::Error> {
+        self.reconcile_files(draft, policy, uploads).await
     }
 
-    fn publish_draft(
+    async fn publish_draft(
         &self,
         draft_id: &<Self::Draft as DraftResource>::Id,
-    ) -> impl Future<Output = Result<Self::Published, Self::Error>> {
-        let draft_id = *draft_id;
-        async move { self.publish_article(draft_id).await }
+    ) -> Result<Self::Published, Self::Error> {
+        self.publish_article(*draft_id).await
     }
 }
 
