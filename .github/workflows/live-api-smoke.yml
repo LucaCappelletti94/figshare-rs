@@ -1,16 +1,14 @@
-name: Live Daily
-run-name: Live Daily
+name: Live API Smoke
+run-name: Live API Smoke
 
 on:
-  schedule:
-    - cron: "23 3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: figshare-live-daily
+  group: figshare-live-api-smoke
   cancel-in-progress: false
 
 jobs:

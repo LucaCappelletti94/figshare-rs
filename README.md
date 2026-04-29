@@ -13,6 +13,9 @@ It provides a typed API built around [`FigshareClient`](https://docs.rs/figshare
 The shared cross-client traits from [`client-uploader-traits`](https://github.com/LucaCappelletti94/client-uploader-traits) are re-exported as `figshare_rs::client_uploader_traits`. Import `figshare_rs::client_uploader_traits::prelude::*` when you want to write generic code against the aligned `client-rs` trait surface.
 
 > [!WARNING]
+> Figshare has asked us to turn off the daily live API tester for this project. The live smoke suite was working up to April 29, 2026, but because it is no longer run automatically every day, we cannot guarantee that this crate will maintain API parity with Figshare.
+
+> [!WARNING]
 > For regular free `figshare.com` accounts, Figshare currently offers a `20GB` total storage quota and a `20GB` maximum individual file size, not `20GB` per document:
 > <https://help.figshare.com/article/figshare-account-limits>
 > <https://info.figshare.com/user-guide/file-size-limits-and-storage/>
