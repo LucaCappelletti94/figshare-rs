@@ -49,7 +49,9 @@ jobs:
       - name: Check documentation and workflow links
         uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
-          args: README.md .github/workflows/*.yml
+          args: >-
+            --exclude '^https[:]//codecov[.]io/gh/LucaCappelletti94/figshare-rs/?$'
+            README.md .github/workflows/*.yml
           lycheeVersion: v0.21.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
