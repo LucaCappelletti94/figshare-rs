@@ -25,7 +25,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Run public live smoke suite
         run: cargo test --test live_public --all-features --locked -- --ignored --nocapture --test-threads=1
@@ -55,7 +55,7 @@ jobs:
 
       - name: Cache cargo artifacts
         if: ${{ env.FIGSHARE_TOKEN != '' }}
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
 
       - name: Run authenticated live smoke suite
         if: ${{ env.FIGSHARE_TOKEN != '' }}
