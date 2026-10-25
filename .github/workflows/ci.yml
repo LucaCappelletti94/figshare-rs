@@ -19,7 +19,7 @@ concurrency:
 jobs:
   fmt:
     name: Format
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
 
     steps:
@@ -39,7 +39,7 @@ jobs:
 
   links:
     name: Links
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
 
     steps:
@@ -58,7 +58,7 @@ jobs:
 
   docs:
     name: Docs
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
 
     steps:
@@ -78,7 +78,7 @@ jobs:
 
   msrv:
     name: MSRV
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
 
     steps:
@@ -104,7 +104,7 @@ jobs:
 
   clippy:
     name: Clippy
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
 
     steps:
@@ -133,13 +133,13 @@ jobs:
       matrix:
         include:
           - name: linux-default
-            os: ubuntu-latest
+            os: ubuntu-26.04
             command: cargo test --locked
           - name: linux-all-features
-            os: ubuntu-latest
+            os: ubuntu-26.04
             command: cargo test --all-features --locked
           - name: linux-native-tls
-            os: ubuntu-latest
+            os: ubuntu-26.04
             command: cargo test --no-default-features --features native-tls --locked
           - name: macos-default
             os: macos-latest
@@ -166,7 +166,7 @@ jobs:
 
   package:
     name: Package
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
 
     steps:
@@ -184,7 +184,7 @@ jobs:
 
   semver:
     name: Semver
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
 
     steps:
@@ -223,7 +223,7 @@ jobs:
 
   audit:
     name: Audit
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
 
     steps:
@@ -244,7 +244,7 @@ jobs:
 
   coverage:
     name: Coverage
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     permissions:
       contents: read
