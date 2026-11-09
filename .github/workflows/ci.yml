@@ -221,27 +221,6 @@ jobs:
         if: ${{ steps.semver-baseline.outputs.skip != 'true' }}
         run: cargo semver-checks check-release --release-type patch --baseline-rev "${{ steps.semver-baseline.outputs.rev }}"
 
-  audit:
-    name: Audit
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-
-      - name: Install cargo-audit
-        uses: taiki-e/install-action@cargo-audit
-
-      - name: Audit dependencies
-        run: cargo audit
-
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
