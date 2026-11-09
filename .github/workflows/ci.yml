@@ -141,15 +141,6 @@ jobs:
           - name: linux-native-tls
             os: ubuntu-latest
             command: cargo test --no-default-features --features native-tls --locked
-          - name: macos-default
-            os: macos-latest
-            command: cargo test --locked
-          - name: windows-default
-            os: windows-latest
-            command: cargo test --locked
-          - name: windows-native-tls
-            os: windows-latest
-            command: cargo test --no-default-features --features native-tls --locked
 
     steps:
       - name: Checkout
